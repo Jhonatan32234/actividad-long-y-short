@@ -22,6 +22,26 @@ const App = () => {
     if (storedCantidad) {
       setCantidad(storedCantidad);
     }
+
+    const storedProductos = JSON.parse(localStorage.getItem("productos"));
+    if (Array.isArray(storedProductos)) {
+      setProductos(storedProductos);
+    } else {
+      setProductos([]); // En caso de que no sea un array válido, inicializa como array vacío
+    }
+
+    // Escuchar evento de antes de descargar o recargar la página
+    const handleBeforeUnload = (event) => {
+      // Borrar los datos de productos del localStorage
+      localStorage.removeItem("productos");
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    // Cleanup del event listener
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
   }, []);
 
   // Función para manejar long polling
@@ -41,8 +61,11 @@ const App = () => {
 
         if (count > 0) {
           // Acumula la cantidad
-          setCantidad((prevCantidad) => prevCantidad + count);
-          localStorage.setItem("cantidadDescuento", JSON.stringify(cantidad + count));
+          setCantidad((prevCantidad) => {
+            const nuevaCantidad = prevCantidad + count;
+            localStorage.setItem("cantidadDescuento", JSON.stringify(nuevaCantidad));
+            return nuevaCantidad;
+          });
           console.log("Cantidad de productos con descuento:", localStorage.getItem("cantidadDescuento"));
         }
 
@@ -78,20 +101,25 @@ const App = () => {
         if (response.status === 200) {
           const productosRecibidos = response.data;
 
-          // Filtrar los productos para evitar duplicados
-          const productosFiltrados = productosRecibidos.filter(
-            (producto) =>
-              !productos.some((prod) => prod.codigo === producto.codigo)
-          );
-
-          if (productosFiltrados.length > 0) {
-            // Agregar los productos nuevos al array sin reemplazar el estado anterior
-            setProductos((prevProductos) => [
-              ...prevProductos,
-              ...productosFiltrados,
-            ]);
-            console.log("Productos recibidos:", productosFiltrados);
+          // Asegúrate de que productosRecibidos sea un array
+          if (Array.isArray(productosRecibidos)) {
+            // Filtrar los productos para evitar duplicados
+            const productosFiltrados = productosRecibidos.filter(
+              (producto) => !productos.some((prod) => prod.codigo === producto.codigo)
+            );
+          
+            if (productosFiltrados.length > 0) {
+              // Agregar los productos nuevos al array sin reemplazar el estado anterior
+              setProductos((prevProductos) => [
+                ...prevProductos,
+                ...productosFiltrados,
+              ]);
+              console.log("Productos recibidos:", productosFiltrados);
+            }
+          } else {
+            console.error("Los datos recibidos no son un array:", productosRecibidos);
           }
+          
         }
 
         setLoadingShort(false);
@@ -153,7 +181,11 @@ const App = () => {
       console.log("Producto insertado:", response.data);
       
       // Actualizar la lista de productos después de agregar uno nuevo
-      setProductos((prevProductos) => [productoConPrecio, ...prevProductos]);
+      setProductos((prevProductos) => {
+        const nuevosProductos = [productoConPrecio, ...prevProductos];
+        localStorage.setItem("productos", JSON.stringify(nuevosProductos));
+        return nuevosProductos;
+      });
       
       // Limpiar el formulario
       setNuevoProducto({
@@ -170,19 +202,15 @@ const App = () => {
   return (
     <div className="App">
       <h1>Productos con Descuento</h1>
-
-      {/* Mostrar la cantidad total de productos con descuento desde localStorage */}
       <div>
         <h2>Cantidad de productos con descuento: {cantidad}</h2>
       </div>
 
-      {/* Botones para pausar y reanudar long polling */}
       <div>
         <button onClick={handlePauseLongPolling}>Pausar Long Polling</button>
         <button onClick={handleResumeLongPolling}>Reanudar Long Polling</button>
       </div>
 
-      {/* Formulario para agregar un nuevo producto */}
       <div>
         <h2>Agregar Producto</h2>
         <form onSubmit={handleSubmit}>
@@ -249,7 +277,7 @@ const App = () => {
               </tr>
             </thead>
             <tbody>
-              {productos.map((producto, index) => (
+              {(Array.isArray(productos) ? productos : []).map((producto, index) => (
                 <tr key={index}>
                   <td>{producto.nombre}</td>
                   <td>{producto.precio}</td>
